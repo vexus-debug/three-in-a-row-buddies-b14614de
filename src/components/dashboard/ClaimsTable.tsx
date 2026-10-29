@@ -7,11 +7,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ShieldCheck, Search, Send, Loader2 } from "lucide-react";
+import { ShieldCheck, Search, Send, Loader2, Plus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { TableSkeleton } from "@/components/dashboard/TableSkeleton";
-import { useInsuranceClaims, useUpdateClaim, CLAIM_STATUSES } from "@/hooks/useBilling";
+import { useInsuranceClaims, useUpdateClaim, useSettleClaim, CLAIM_STATUSES } from "@/hooks/useBilling";
+import { useInvoices, useInvoiceItems } from "@/hooks/useInvoices";
+import { invoiceBalance } from "@/lib/arAging";
+import { settlementAmount, hasActiveClaim } from "@/lib/claims";
+import { InvoiceDetailDialog } from "@/components/dashboard/InvoiceDetailDialog";
+import { CreateClaimModal } from "@/components/dashboard/CreateClaimModal";
 import { filterClaims } from "@/lib/printDocs";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +39,41 @@ export function ClaimsTable() {
   const [batching, setBatching] = useState(false);
   const [noteFor, setNoteFor] = useState<{ claim: any; status: string } | null>(null);
   const [noteText, setNoteText] = useState("");
+  const settle = useSettleClaim();
+  const { data: invoices = [] } = useInvoices();
+  const [settleFor, setSettleFor] = useState<any | null>(null);
+  const [settleAmt, setSettleAmt] = useState("");
+  const [settleRef, setSettleRef] = useState("");
+  const [viewInvoiceId, setViewInvoiceId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [invQuery, setInvQuery] = useState("");
+  const [claimInvoiceId, setClaimInvoiceId] = useState<string | null>(null);
+  const viewInvoice = invoices.find((i: any) => i.id === viewInvoiceId) || null;
+  const claimInvoice = invoices.find((i: any) => i.id === claimInvoiceId) || null;
+  const { data: claimItems = [] } = useInvoiceItems(claimInvoiceId);
+  const claimable = useMemo(() => {
+    const q = invQuery.trim().toLowerCase();
+    return invoices.filter((i: any) => invoiceBalance(i) > 0
+      && !hasActiveClaim(claims.filter((c: any) => c.invoice_id === i.id))
+      && (!q || `${i.invoice_number} ${i.patients?.first_name || ""} ${i.patients?.last_name || ""}`.toLowerCase().includes(q))).slice(0, 20);
+  }, [invoices, claims, invQuery]);
+
+  const balanceFor = (invoiceId: string) => {
+    const inv = invoices.find((i: any) => i.id === invoiceId);
+    return inv ? invoiceBalance(inv) : Infinity;
+  };
+
+  const confirmSettle = async () => {
+    if (!settleFor) return;
+    const amt = settlementAmount(Number(settleAmt), balanceFor(settleFor.invoice_id));
+    try {
+      await settle.mutateAsync({ claim: settleFor, amount: amt, reference: settleRef.trim() || undefined });
+      toast({ title: "Claim marked paid", description: amt > 0 ? `${fmt(amt)} applied to the invoice` : undefined });
+      setSettleFor(null);
+    } catch (e: any) {
+      toast({ title: "Could not settle claim", description: e.message, variant: "destructive" });
+    }
+  };
 
   const rows = useMemo(() => filterClaims(claims, status, query), [claims, status, query]);
   const drafts = rows.filter((c: any) => c.status === "draft");
@@ -52,6 +92,12 @@ export function ClaimsTable() {
   };
 
   const onStatusChange = async (c: any, next: string) => {
+    if (next === "paid") {
+      setSettleAmt(String(settlementAmount(Number(c.amount_claimed), balanceFor(c.invoice_id))));
+      setSettleRef("");
+      setSettleFor(c);
+      return;
+    }
     if (next === "denied" || next === "pending") {
       setNoteText(c.notes || "");
       setNoteFor({ claim: c, status: next });
@@ -94,9 +140,14 @@ export function ClaimsTable() {
   return (
     <Card className="border-border bg-card shadow-sm overflow-hidden">
       <CardHeader className="pb-3 border-b border-border/50 space-y-3">
-        <div>
-          <CardTitle className="text-[15px] font-semibold">Insurance claims</CardTitle>
-          <CardDescription className="text-xs">Open an invoice and choose "Insurance claim" to draft a new one.</CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-[15px] font-semibold">Insurance claims</CardTitle>
+            <CardDescription className="text-xs">Draft a claim here or from an invoice.</CardDescription>
+          </div>
+          <Button size="sm" className="h-8 shrink-0" onClick={() => { setInvQuery(""); setPickerOpen(true); }}>
+            <Plus className="mr-1 h-3.5 w-3.5" />New claim
+          </Button>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
@@ -150,7 +201,11 @@ export function ClaimsTable() {
                     <td className="py-3 pl-4">
                       {c.status === "draft" && <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggle(c.id)} aria-label={`Select claim ${c.invoices?.invoice_number || ""}`} />}
                     </td>
-                    <td className="py-3 px-4 font-mono text-xs text-primary font-semibold">{c.invoices?.invoice_number || "—"}</td>
+                    <td className="py-3 px-4 font-mono text-xs font-semibold">
+                      {c.invoices?.invoice_number ? (
+                        <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => setViewInvoiceId(c.invoice_id)}>{c.invoices.invoice_number}</button>
+                      ) : "—"}
+                    </td>
                     <td className="py-3 px-4 font-medium">
                       {c.patients ? `${c.patients.first_name} ${c.patients.last_name}` : "—"}
                       {c.notes && (c.status === "denied" || c.status === "pending") && (
@@ -203,6 +258,57 @@ export function ClaimsTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={!!settleFor} onOpenChange={(o) => !o && setSettleFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mark claim paid</DialogTitle>
+            <DialogDescription>The settled amount is recorded as an insurance payment on invoice {settleFor?.invoices?.invoice_number}.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1.5"><Label htmlFor="settle-amt" className="text-xs">Amount paid by insurer (₦)</Label><Input id="settle-amt" type="number" min={0} value={settleAmt} onChange={(e) => setSettleAmt(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label htmlFor="settle-ref" className="text-xs">Settlement reference / EFT code</Label><Input id="settle-ref" value={settleRef} onChange={(e) => setSettleRef(e.target.value)} placeholder="e.g. EFT-20931" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettleFor(null)}>Cancel</Button>
+            <Button onClick={confirmSettle} disabled={settle.isPending}>{settle.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}Confirm</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New claim</DialogTitle>
+            <DialogDescription>Choose an unpaid invoice to claim against.</DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input value={invQuery} onChange={(e) => setInvQuery(e.target.value)} placeholder="Invoice number or patient" className="pl-9 h-9" aria-label="Search invoices" autoFocus />
+          </div>
+          <div className="max-h-72 overflow-y-auto divide-y divide-border rounded-md border border-border">
+            {claimable.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">No unpaid invoices without an active claim.</p>
+            ) : claimable.map((i: any) => (
+              <button key={i.id} type="button" className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-muted/50"
+                onClick={() => { setClaimInvoiceId(i.id); setPickerOpen(false); }}>
+                <span><span className="font-mono font-semibold text-primary">{i.invoice_number}</span> · {i.patients ? `${i.patients.first_name} ${i.patients.last_name}` : "—"}</span>
+                <span className="tabular-nums font-semibold">{fmt(invoiceBalance(i))}</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {claimInvoice && (
+        <CreateClaimModal
+          open={!!claimInvoiceId}
+          onOpenChange={(o) => !o && setClaimInvoiceId(null)}
+          invoice={{ id: claimInvoice.id, patient_id: claimInvoice.patient_id, invoice_number: claimInvoice.invoice_number, balance: invoiceBalance(claimInvoice) }}
+          items={claimItems}
+        />
+      )}
+
+      <InvoiceDetailDialog open={!!viewInvoice} onOpenChange={(o) => !o && setViewInvoiceId(null)} invoice={viewInvoice} />
     </Card>
   );
 }

@@ -149,3 +149,40 @@ export function useUpdateClaim() {
     onSuccess: invalidate,
   });
 }
+
+/** Claims attached to one invoice (indexed lookup by invoice_id). */
+export function useInvoiceClaims(invoiceId: string | null) {
+  return useQuery({
+    queryKey: ["insurance_claims", "invoice", invoiceId],
+    enabled: !!invoiceId,
+    queryFn: async () => {
+      const { data, error } = await db.from("insurance_claims").select("id, insurer_name, policy_number, amount_claimed, amount_paid, status, created_at").eq("invoice_id", invoiceId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+}
+
+/** Mark a claim paid and post the insurer's money as an "insurance" payment on the invoice. */
+export function useSettleClaim() {
+  const { currentOrg } = useOrg();
+  const invalidate = useInvalidateBilling();
+  return useMutation({
+    mutationFn: async ({ claim, amount, reference }: { claim: any; amount: number; reference?: string }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await db.from("insurance_claims").update({ status: "paid", amount_paid: amount, paid_date: today, submitted_date: claim.submitted_date || today }).eq("id", claim.id);
+      if (error) throw error;
+      if (amount <= 0) return;
+      const { error: pErr } = await db.from("payments").insert({ invoice_id: claim.invoice_id, amount, payment_method: "insurance", reference: reference || `Claim ${claim.insurer_name}`, notes: `Insurance claim settlement (${claim.insurer_name})`, org_id: currentOrg?.org_id });
+      if (pErr) throw pErr;
+      const [{ data: pays }, { data: inv }] = await Promise.all([
+        db.from("payments").select("amount").eq("invoice_id", claim.invoice_id),
+        db.from("invoices").select("total").eq("id", claim.invoice_id).single(),
+      ]);
+      const paid = (pays || []).reduce((s: number, p: any) => s + Number(p.amount), 0);
+      const { invoiceStatusAfterPayment } = await import("@/lib/claims");
+      await db.from("invoices").update({ status: invoiceStatusAfterPayment(paid, Number(inv?.total || 0)) }).eq("id", claim.invoice_id);
+    },
+    onSuccess: invalidate,
+  });
+}
