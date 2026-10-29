@@ -29,6 +29,7 @@ import shotDashboard from "@/assets/dashboard-shots/dental-dashboard.png";
 import shotTreatments from "@/assets/dashboard-shots/dental-treatments.png";
 import { LocalSeo } from "@/site/components/LocalSeo";
 import { CapabilityMatrix, ClosingBanner, PricingEstimator, type CapabilityGroup } from "@/site/components/industry/IndustrySections";
+import { DentalSavings, DentalTrust } from "@/site/components/industry/DentalSavings";
 
 const matrixGroups: CapabilityGroup[] = [
   { tab: "Clinical", icon: Smile, tag: "Clinical & Charting", title: "Chart by tooth, plan by patient", benefit: "Everything you record in the chair stays attached to the same patient.", points: ["Tooth-by-tooth charting", "Treatment plans", "SOAP notes", "Prescriptions", "Digital consent forms", "Tooth-tagged imaging"] },
@@ -159,6 +160,7 @@ const DentalClinics = () => {
             </ul>
           </div>
         </section>
+        <DentalTrust />
         <div className="mx-auto max-w-6xl px-4 pb-12 pt-16 sm:px-6 sm:pb-16 lg:pb-24">
 
 
@@ -191,6 +193,8 @@ const DentalClinics = () => {
               })}
             </div>
           </section>
+
+          <DentalSavings />
 
           <section className="mb-16 lg:mb-24">
             <motion.p initial="hidden" whileInView="show" viewport={viewport} variants={reveal} className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-primary">A patient's visit</motion.p>

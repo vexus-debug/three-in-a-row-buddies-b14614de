@@ -13,6 +13,16 @@ export interface UpdateEntry {
 
 export const updates: UpdateEntry[] = [
   {
+    version: "v2.19.1",
+    date: "October 29, 2026",
+    title: "Savings breakdown and safe switching on the dental page",
+    kind: "improvement",
+    items: [
+      { kind: "improvement", text: "The dental clinics page now shows yearly savings in Naira, with dropdowns listing the roles and services Clinexus replaces." },
+      { kind: "improvement", text: "New section on moving from Excel or paper, daily automatic backups and exporting your data." },
+    ],
+  },
+  {
     version: "v2.19.0",
     date: "October 29, 2026",
     title: "Insurance claims that settle invoices",
