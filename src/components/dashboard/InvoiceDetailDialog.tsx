@@ -19,6 +19,16 @@ import { InvoiceAdjustmentsPanel } from "@/components/dashboard/InvoiceAdjustmen
 import { InvoiceAuditDrawer } from "@/components/dashboard/InvoiceAuditDrawer";
 import { PatientCreditBalanceCard } from "@/components/dashboard/PatientCreditBalanceCard";
 import { CreateClaimModal } from "@/components/dashboard/CreateClaimModal";
+import { useInvoiceClaims } from "@/hooks/useBilling";
+import { hasActiveClaim } from "@/lib/claims";
+
+const claimTone: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground border-border",
+  submitted: "bg-primary/10 text-primary border-primary/20",
+  pending: "bg-accent text-accent-foreground border-border",
+  paid: "bg-secondary/15 text-secondary border-secondary/30",
+  denied: "bg-destructive/10 text-destructive border-destructive/20",
+};
 import { invoiceBalance } from "@/lib/arAging";
 import { dentalLineMeta } from "@/lib/billingDisplay";
 import { receiptHTML, statementHTML } from "@/lib/printDocs";
@@ -176,6 +186,8 @@ export function InvoiceDetailDialog({ open, onOpenChange, invoice }: InvoiceDeta
   const { data: clinic } = useClinicSettings();
   const [auditOpen, setAuditOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
+  const { data: claims = [] } = useInvoiceClaims(invoice?.id ?? null);
+  const activeClaim = hasActiveClaim(claims);
   const providerIds = [...new Set(lineItems.map((li) => li.provider_id).filter(Boolean))] as string[];
   const { data: providers = {} } = useQuery({
     queryKey: ["invoice_providers", providerIds.join(",")],
@@ -455,6 +467,29 @@ export function InvoiceDetailDialog({ open, onOpenChange, invoice }: InvoiceDeta
                 <span className={balance > 0 ? "text-red-600" : "text-emerald-600"}>{formatCurrency(balance)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Insurance claims */}
+          <div>
+            <h4 className="font-semibold mb-2 text-foreground">Insurance Claims</h4>
+            {claims.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No claims filed for this invoice.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {claims.map((c: any) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{c.insurer_name}</p>
+                      {c.policy_number && <p className="text-muted-foreground">Policy {c.policy_number}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="tabular-nums font-semibold">{formatCurrency(Number(c.amount_claimed))}</span>
+                      <Badge variant="outline" className={`capitalize ${claimTone[c.status] || ""}`}>{c.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Payment history */}
