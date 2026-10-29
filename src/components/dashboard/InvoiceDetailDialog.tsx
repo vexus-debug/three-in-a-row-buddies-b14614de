@@ -591,8 +591,8 @@ export function InvoiceDetailDialog({ open, onOpenChange, invoice }: InvoiceDeta
                 <History className="mr-1.5 h-3.5 w-3.5" />History
               </Button>
               {balance > 0 && lineItems.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => setClaimOpen(true)}>
-                  <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />Insurance claim
+                <Button variant="outline" size="sm" onClick={() => setClaimOpen(true)} disabled={activeClaim} title={activeClaim ? "An active claim already covers this invoice" : undefined}>
+                  <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />{activeClaim ? "Claim in progress" : "Insurance claim"}
                 </Button>
               )}
               {balance > 0 && (
