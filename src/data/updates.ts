@@ -13,6 +13,17 @@ export interface UpdateEntry {
 
 export const updates: UpdateEntry[] = [
   {
+    version: "v2.19.0",
+    date: "October 29, 2026",
+    title: "Insurance claims that settle invoices",
+    kind: "feature",
+    items: [
+      { kind: "feature", text: "Invoices now list their insurance claims with status, and block a second claim while one is still open." },
+      { kind: "feature", text: "Marking a claim paid asks for the settled amount and reference, then reduces the invoice balance automatically." },
+      { kind: "feature", text: "Start a new claim straight from the Claims tab, and tap any invoice number to open it." },
+    ],
+  },
+  {
     version: "v2.18.0",
     date: "October 29, 2026",
     title: "Signed notes, voice dictation and chairside mode",
